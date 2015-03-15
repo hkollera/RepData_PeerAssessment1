@@ -1,25 +1,98 @@
 ---
 title: "Reproducible Research: Peer Assessment 1"
 output: 
-  html_document:
-    keep_md: true
+html_document:
+keep_md: true
 ---
-
+## Introduction
+In this assessment data from an activity monitoring device is explored. The device collects data at 5 minute intervals through out the day. According to the assignment of the task the data consists of two months of data from an anonymous individual collected during the months of October and November, 2012 and include the number of steps
+taken in 5 minute intervals each day.
 
 ## Loading and preprocessing the data
 
+The data is given as a zipped CSV file names activity.zip which is part of the github project **RepData_PeerAssessment1/** (URL:
+ https://github.com/rdpeng/RepData_PeerAssessment1/blob/master/activity.zip.)
+ 
+ 
+```{r}
+library(plyr)
+library(timeDate)
+library(ggplot2)
 
+actDF <- read.csv("activity.csv",na.strings="NA")
+head(actDF)
+summary(actDF)
+```
+The data consists of three columns with the number of steps, the date and the 5-min interval.  
+For a better handling of the dates and times an additional column with a combined date/time value is added.
+
+```{r}
+actDF$interval <- sprintf("%04d", actDF$interval)
+actDF$interval <- paste(substr(actDF$interval, 1, 3-1), ":", substr(actDF$interval, 3, nchar(actDF$interval)), sep = "")
+actDF$date_time <- paste(actDF$date, actDF$interval)
+actDF$date_time <- strptime(actDF$date_time, "%Y-%m-%d %H:%M")
+```
+Because there are NAs in the data, it is interesting to determine the distribution of the NAs.
+```{r}
+naactDF <- subset(actDF, is.na(steps))
+nacount <- count(naactDF,"date")
+nacount
+# barplot(nacount$freq,names.arg=nacount2$date)
+```
+There are missing whole days, but no single values.
 
 ## What is mean total number of steps taken per day?
-
-
-
+The distribution of the total of steps per day is shown in the next figure.
+```{r}
+actsumDF <- ddply(actDF, .(date), summarise, sum=sum(steps))
+hist(actsumDF$sum)
+```
+The mean and the median are
+```{r}
+mean(actsumDF$sum,na.rm=TRUE)
+median(actsumDF$sum,na.rm=TRUE)
+```
+Both are nearly equal. So it is probable that the distribution is normal.
 ## What is the average daily activity pattern?
+To explore the intra day activity pattern we compute the mean of each 5 minute interval and show them as a line graph. 
 
-
+```{r}
+actcleanDF <- subset(actDF,!is.na(steps))
+actintervalsumDF <- ddply(actcleanDF, .(interval), summarise, mean=mean(steps))
+plot(actintervalsumDF$mean,type="l")
+maxinterval <- subset(actintervalsumDF,mean == max(actintervalsumDF$mean),interval)
+maxinterval
+```
 
 ## Imputing missing values
-
-
-
+As we have seen above, there are missing eight whole days of data. 
+```{r}
+nrow(naactDF)
+```
+The above plot of the intraday activity shows that there are times of activity and of resting. Therefor the means of the interval are used for the NAs
+```{r}
+nr <- nrow(actDF)
+for (i in 1:nr) {
+    if(is.na(actDF[i,1])){
+        actDF[i,1] <- subset(actintervalsumDF, interval==actDF[i,3],mean)
+    }
+}
+```
 ## Are there differences in activity patterns between weekdays and weekends?
+Yes.
+```{r}
+actDF$weflag <- isWeekend(actDF$date_time)
+
+wdintervalsumDF <- ddply(subset(actDF,weflag==FALSE), .(interval), summarise, mean=mean(steps))
+weintervalsumDF <- ddply(subset(actDF,weflag==TRUE), .(interval), summarise, mean=mean(steps))
+wdintervalsumDF$time <- as.POSIXct(wdintervalsumDF$interval, format="%H:%M")
+par(mfrow = c(1, 2))
+plot(wdintervalsumDF$time,wdintervalsumDF$mean,type="l",main="Weekdays",
+     xlab="5 min Timeinterval",
+     ylab="No of steps (Mean)",
+     ylim=c(0,240))
+plot(wdintervalsumDF$time,weintervalsumDF$mean,type="l",main="Weekenddays",
+     xlab="5 min Timeinterval", 
+     ylab="No of steps (Mean)",
+     ylim=c(0,240))     
+```
